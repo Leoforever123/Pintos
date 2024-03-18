@@ -133,7 +133,52 @@ pintos_init (void)
     /* Run actions specified on kernel command line. */
     run_actions (argv);
   } else {
-    // TODO: no command line passed to kernel. Run interactively 
+    // TODO: no command line passed to kernel. Run interactively
+    const size_t buf_size = 128;              // Maximum command length
+    char *buf = (char*) malloc(buf_size);     // Buffer to store command
+    size_t cmd_length = 0;                    // Length of current command
+    char input;                               // Current input character
+    while (true) {
+      // print the instruction
+      printf("Pintos> ");
+
+      // initialize the buffer
+      memset(buf, '\0', buf_size);
+      cmd_length = 0;
+
+      // read the command until enter is pressed
+      while (true) {
+        input = input_getc();
+        if (input == 13) { // Enter
+          buf[cmd_length] = '\0';
+          break;
+        } else if (input == 127) { // Backspace
+          if (cmd_length > 0) {
+            cmd_length--;
+            buf[cmd_length] = '\0';
+            printf("\b \b");
+          }
+        } else if (cmd_length < buf_size - 1) { // Normal character
+          buf[cmd_length] = input;
+          cmd_length++;
+          printf("%c", input);
+        } else {
+          continue;
+        }
+      }
+      printf("\n");
+      // parse the command
+      if (strcmp(buf, "exit") == 0) { // Exit the shell
+        break;
+      } else if (strcmp(buf, "\0") == 0) { // Skip empty command
+        continue;
+      } else if (strcmp(buf, "whoami") == 0) { // Print the user name
+        printf("2200013111\n");
+      } else { // Invalid command
+        printf("invalid command\n");
+      }
+      
+    }
   }
 
   /* Finish up. */

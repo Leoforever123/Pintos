@@ -20,6 +20,9 @@
 /** Number of timer ticks since OS booted. */
 static int64_t ticks;
 
+/** List of sleeping threads. */
+static struct list sleeping_threads;
+
 /** Number of loops per timer tick.
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
@@ -29,6 +32,7 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+static void timer_reduce_wake_time (void);
 
 /** Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -37,6 +41,7 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  list_init (&sleeping_threads);
 }
 
 /** Calibrates loops_per_tick, used to implement brief delays. */
@@ -89,11 +94,17 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+  enum intr_level old_level;
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+
+  old_level = intr_disable ();
+  struct sleeping_thread st;
+  list_push_back (&sleeping_threads, &st.elem);
+  st.wake_time = ticks;
+  st.thread = thread_current ();
+  thread_block ();
+  intr_set_level (old_level);
 }
 
 /** Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -172,6 +183,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+  timer_reduce_wake_time ();
 }
 
 /** Returns true if LOOPS iterations waits for more than one timer
@@ -243,4 +255,26 @@ real_time_delay (int64_t num, int32_t denom)
      the possibility of overflow. */
   ASSERT (denom % 1000 == 0);
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000)); 
+}
+
+/** Reduce wake_time of all sleeping thread per tick. */
+static void
+timer_reduce_wake_time (void)
+{
+  struct list_elem *e;
+  for (e = list_begin (&sleeping_threads); e != list_end (&sleeping_threads);
+       e = list_next (e))
+    {
+      struct sleeping_thread *st = list_entry (e, struct sleeping_thread, elem);
+      st->wake_time--;
+      if (st->wake_time <= 0)
+        {
+          list_remove (e);
+          thread_unblock (st->thread);
+          /* If priority change. As this function will be called in handler, we can't
+              call thread_yield directly in this function. */
+          if(thread_current ()->priority < st->thread->priority)
+            intr_yield_on_return ();
+        }
+    }
 }
