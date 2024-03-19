@@ -72,7 +72,7 @@ void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
 /** compare the priority of two threads */
-static bool compare_priority_Greater(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool compare_priority_Greater(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 /** Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -344,11 +344,17 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  int old_priority = thread_current ()->priority;
-  thread_current ()->priority = new_priority;
-  if (old_priority > new_priority)
-  {
-    thread_yield();
+  if (!thread_mlfqs) {
+    int old_priority = thread_current ()->priority;
+    thread_current ()->base_priority = new_priority;
+    if (list_empty(&thread_current()->holding_locks) || new_priority > old_priority)
+    {
+      thread_current ()->priority = new_priority;
+    }
+    if (old_priority > new_priority)
+    {
+      thread_yield();
+    }
   }
 }
 
@@ -476,7 +482,10 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->base_priority = priority;
+  t->waiting_lock = NULL;
   t->magic = THREAD_MAGIC;
+  list_init(&t->holding_locks);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -598,7 +607,8 @@ allocate_tid (void)
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 /** compare the priority of two threads */
-static bool compare_priority_Greater(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+bool 
+compare_priority_Greater(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
