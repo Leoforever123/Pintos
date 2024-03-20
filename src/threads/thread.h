@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "fixed_point.h"
 
 /** States in a thread's life cycle. */
 enum thread_status
@@ -96,6 +97,7 @@ struct thread
     struct lock *waiting_lock;          /**< The lock current thread is waiting to be released*/
     struct list holding_locks;          /**< List of all the locks current thread holds. 
                                              We can remain it as an ordered list. */
+    fixed_point recent_cpu;             /**< The recent cpu time of this thread. */
     
 
     /* Shared between thread.c and synch.c. */
