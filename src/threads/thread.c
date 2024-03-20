@@ -102,6 +102,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  load_avg = itof(0);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -213,6 +214,7 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+  t->nice = thread_current()->nice;
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -398,6 +400,15 @@ void
 thread_set_nice (int nice UNUSED) 
 {
   thread_current()->nice = nice;
+  mlfqs_priority(thread_current(), NULL);
+  if (!list_empty(&ready_list))
+  {
+    struct thread *t = list_entry(list_front(&ready_list), struct thread, elem);
+    if (t->priority > thread_current()->priority)
+    {
+      thread_yield();
+    }
+  }
 }
 
 /** Returns the current thread's nice value. */
@@ -509,6 +520,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->base_priority = priority;
   t->waiting_lock = NULL;
+  t->recent_cpu = itof(0);
+  t->nice = 0;
   t->magic = THREAD_MAGIC;
   list_init(&t->holding_locks);
 

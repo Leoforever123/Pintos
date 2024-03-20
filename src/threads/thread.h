@@ -150,7 +150,7 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 bool 
-compare_priority_Greater(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+compare_priority_Greater(const struct list_elem *, const struct list_elem *, void *);
 
 
 #endif /**< threads/thread.h */
