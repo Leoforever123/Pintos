@@ -278,18 +278,20 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-
-  struct thread *cur = thread_current ();
-  list_remove (&lock->elem);
-
-  cur->priority = cur->base_priority;
-  if (!list_empty(&cur->holding_locks))
+  if (!thread_mlfqs)
   {
-    struct lock *next_lock = list_entry (list_front (&cur->holding_locks), struct lock, elem);
-    if (next_lock->max_priority > cur->base_priority)
-      cur->priority = next_lock->max_priority;
-    else
-      cur->priority = cur->base_priority;
+    struct thread *cur = thread_current ();
+    list_remove (&lock->elem);
+
+    cur->priority = cur->base_priority;
+    if (!list_empty(&cur->holding_locks))
+    {
+      struct lock *next_lock = list_entry (list_front (&cur->holding_locks), struct lock, elem);
+      if (next_lock->max_priority > cur->base_priority)
+        cur->priority = next_lock->max_priority;
+      else
+        cur->priority = cur->base_priority;
+    }
   }
 
   lock->holder = NULL;

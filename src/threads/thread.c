@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -74,6 +75,12 @@ static tid_t allocate_tid (void);
 /** compare the priority of two threads */
 bool compare_priority_Greater(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
+/** mlfqs functions and variable */
+static fixed_point load_avg;
+static void mlfqs_priority(struct thread *t, void *aux UNUSED);
+static void mlfqs_recent_cpu(struct thread *t, void *aux UNUSED);
+static void mlfqs_load_avg(void);
+
 /** Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -136,6 +143,27 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
+
+  /* mlfqs */
+  if (thread_mlfqs) {
+    /* addup recent_cpu of current thread first */
+    if (t != idle_thread)
+    {
+      t->recent_cpu = add_int(t->recent_cpu, 1);
+    }
+    int64_t cur_tick = timer_ticks();
+    /* update load_avg and recent_cpu every second */
+    if (cur_tick % TIMER_FREQ == 0)
+    {
+      mlfqs_load_avg();
+      thread_foreach(mlfqs_recent_cpu, NULL);
+    }
+    /* update priority of each thread every 4 ticks */
+    if (cur_tick % 4 == 0)
+    {
+      thread_foreach(mlfqs_priority, NULL);
+    }
+  }
 
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
@@ -369,31 +397,28 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  thread_current()->nice = nice;
 }
 
 /** Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current()->nice;
 }
 
 /** Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return ftoi(mul_int(load_avg, 100));
 }
 
 /** Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return ftoi(mul_int(thread_current()->recent_cpu, 100));
 }
 
 /** Idle thread.  Executes when no other thread is ready to run.
@@ -613,4 +638,44 @@ compare_priority_Greater(const struct list_elem *a, const struct list_elem *b, v
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
   return thread_a->priority > thread_b->priority;
+}
+
+/** mlfqs: update the priority of each thread. */
+static void
+mlfqs_priority(struct thread *t, void *aux UNUSED)
+{
+  if (t != idle_thread)
+  {
+    t->priority = PRI_MAX - ftoi(div_int(t->recent_cpu, 4)) - t->nice * 2;
+    if (t->priority > PRI_MAX)
+    {
+      t->priority = PRI_MAX;
+    }
+    if (t->priority < PRI_MIN)
+    {
+      t->priority = PRI_MIN;
+    }
+  }
+}
+
+/** mlfqs: update the recent_cpu of each thread. */
+static void
+mlfqs_recent_cpu(struct thread *t, void *aux UNUSED)
+{
+  if (t != idle_thread)
+  {
+    t->recent_cpu = add_int(mul(div(mul_int(load_avg, 2), add_int(mul_int(load_avg, 2), 1)), t->recent_cpu), t->nice);
+  }
+}
+
+/** mlfqs: update the load_avg. */
+static void
+mlfqs_load_avg(void)
+{
+  int ready_threads = list_size(&ready_list);
+  if (thread_current() != idle_thread)
+  {
+    ready_threads++;
+  }
+  load_avg = add(mul(div(itof(59), itof(60)), load_avg), div_int(itof(ready_threads), 60));
 }
